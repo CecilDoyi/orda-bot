@@ -288,24 +288,30 @@ function getVendor(vendor_id) {
 // FORMAT RESULT FOR WHATSAPP
 // ================================
 function formatResults(results) {
-  if (!results.length) {
-  return `😕 I couldn't find that.\n\nTry something like:\n• cupcakes, Accra\n• sneakers\n• phone repair`
-}
+  if (results.length === 0) {
+    return `😕 I couldn't find anything.
 
-  let msg = `Found *${results.length} result(s)* for you:\n\n`
+Try:
+• cupcakes accra
+• jollof
+• phone repair
+• ankara dress`
+  }
+
+  let msg = `Here are some options 👇\n\n`
+
   results.forEach((p, i) => {
     const vendor = getVendor(p.vendor_id)
+
     msg += `*${i + 1}. ${p.name}*\n`
-    msg += `💰 ${p.price}\n`
-    msg += `🏪 ${vendor.name}\n`
-    msg += `📍 ${p.location}\n`
-    msg += `Reply *ORDER ${p.id}* to order this\n`
-    msg += `\n`
+    msg += `💰 ${p.price} • 📍 ${p.location}\n`
+    msg += `🏪 ${vendor.name}\n\n`
   })
-  msg += `_Powered by Orda_ ✓`
+
+  msg += `Reply with the number (e.g. *1*) to order.`
+
   return msg
 }
-
 // ================================
 // SESSION STORE (tracks order state)
 // ================================
@@ -315,83 +321,102 @@ const sessions = {}
 // PROCESS INCOMING MESSAGE
 // ================================
 
-sessions[from] = {
-  lastResults: results
-}
+// ================================
+// PROCESS INCOMING MESSAGE
+// ================================
 
 function processMessage(from, message) {
   const text = message.trim().toLowerCase()
 
-
-  // Check if user is confirming an order
- if (sessions[from] && sessions[from].pendingProduct) {
-
   const yesWords = ['yes', 'y', 'ok', 'okay', 'confirm', 'go ahead', 'sure']
   const noWords = ['no', 'n', 'cancel', 'stop']
 
-  if (yesWords.includes(text)) {
-    const product = sessions[from].pendingProduct
-    const vendor = getVendor(product.vendor_id)
+  // ================================
+  // 1. HANDLE ORDER CONFIRMATION
+  // ================================
+  if (sessions[from] && sessions[from].pendingProduct) {
 
-    const order = {
-      id: 'ORD' + Date.now(),
-      buyer: from,
-      product: product.name,
-      vendor: vendor.name,
-      vendor_whatsapp: vendor.whatsapp,
-      timestamp: new Date().toISOString(),
-      status: 'pending'
+    if (yesWords.includes(text)) {
+      const product = sessions[from].pendingProduct
+      const vendor = getVendor(product.vendor_id)
+
+      const order = {
+        id: 'ORD' + Date.now(),
+        buyer: from,
+        product: product.name,
+        vendor: vendor.name,
+        vendor_whatsapp: vendor.whatsapp,
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+      }
+
+      orders.push(order)
+      delete sessions[from]
+
+      console.log(`\n🔔 VENDOR NOTIFICATION → ${vendor.name} (${vendor.whatsapp})`)
+      console.log(`   New order: ${product.name} from ${from}`)
+      console.log(`   Order ID: ${order.id}`)
+
+      return `✅ *Order confirmed!*\n\nOrder ID: *${order.id}*\nProduct: ${product.name}\nVendor: ${vendor.name}\n\nThe vendor will contact you shortly on WhatsApp.\n\n_Thank you for using Orda_ 🙏`
     }
 
-    orders.push(order)
-    delete sessions[from]
-
-    console.log(`\n🔔 VENDOR NOTIFICATION → ${vendor.name} (${vendor.whatsapp})`)
-    console.log(`   New order: ${product.name} from ${from}`)
-    console.log(`   Order ID: ${order.id}`)
-
-    return `✅ *Order confirmed!*\n\nOrder ID: *${order.id}*\nProduct: ${product.name}\nVendor: ${vendor.name}\n\nThe vendor has been notified and will contact you shortly on WhatsApp.\n\n_Thank you for using Orda_ 🙏`
-  }
-
-  if (noWords.includes(text)) {
-    delete sessions[from]
-    return `No problem! Send me another search to find something else.`
-  }
-}
-  // Check if user is ordering a specific product
-  
-    if (sessions[from]?.lastResults) {
-  const index = parseInt(text)
-
-  if (!isNaN(index)) {
-    const product = sessions[from].lastResults[index - 1]
-
-    if (product) {
-      sessions[from].pendingProduct = product
-
-      return `🛒 *Order Summary*\n\nProduct: *${product.name}*\nPrice: ${product.price}\n\nReply YES to confirm or NO to cancel.`
+    if (noWords.includes(text)) {
+      delete sessions[from]
+      return `No problem 👍\n\nSend another search to find something else.`
     }
   }
-}
 
-  // Handle greetings
+  // ================================
+  // 2. HANDLE NUMBER SELECTION
+  // ================================
+  if (sessions[from]?.lastResults) {
+    const index = parseInt(text)
+
+    if (!isNaN(index)) {
+      const product = sessions[from].lastResults[index - 1]
+
+      if (product) {
+        const vendor = getVendor(product.vendor_id)
+
+        sessions[from].pendingProduct = product
+
+        return `🛒 *Order Summary*\n\n*${product.name}*\n💰 ${product.price}\n🏪 ${vendor.name}\n📍 ${product.location}\n\nReply *YES* to confirm or *NO* to cancel.`
+      } else {
+        return `Please choose a valid number from the list.`
+      }
+    }
+  }
+
+  // ================================
+  // 3. GREETING
+  // ================================
   if (['hi', 'hello', 'hey', 'orda', 'start'].includes(text)) {
-    return `Welcome to *Orda* 
-    Tell me what you're looking for:
-e.g. "cupcakes, accra" or "sneakers, madina"`
+    return `👋 Welcome to *Orda*\n\nTell me what you're looking for:\n\nExamples:\n• cupcakes accra\n• phone repair\n• ankara dress`
   }
 
-  // Handle help
- if (text === 'help') {
-    return `*Orda Help* 🆘\n\nSearch: just type what you want\nExamples:\n• _cupcakes_\n• _kente shirt Accra_\n• _phone repair_\n\nTo order: reply *ORDER p1* (use the product code shown in results)\n\nTo confirm: reply *YES* or *NO*`
+  // ================================
+  // 4. HELP
+  // ================================
+  if (text === 'help') {
+    return `🆘 *How to use Orda*\n\n1. Search: type what you want\n   e.g. cupcakes, jollof, shoes\n\n2. Select: reply with the number (e.g. 1)\n\n3. Confirm: reply YES or NO`
   }
 
-  if (!results || results.length === 0) {
-  return `I didn’t quite get that 🤔\n\nTry searching like:\n"iphone 17, circle"`
-}
-
-  // Default — treat as search
+  // ================================
+  // 5. SEARCH
+  // ================================
   const results = searchProducts(text)
+
+  // Handle no results
+  if (!results || results.length === 0) {
+    return `😕 I couldn't find anything.\n\nTry:\n• cupcakes accra\n• phone repair\n• jollof`
+  }
+
+  // Store results for selection
+  sessions[from] = {
+    ...sessions[from],
+    lastResults: results
+  }
+
   return formatResults(results)
 }
 
